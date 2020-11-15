@@ -9,6 +9,7 @@ const app = express()
 const port = 8080
 
 const rooms = {}
+const messages = {}
 
 //app.get('/',(req, res)=>res.send('Hello World!!!!'))
 
@@ -24,6 +25,18 @@ app.get('/:room', (req, res, next) => {
   res.sendFile(__dirname + '/build/index.html')
 })
 
+// ************************************* //
+// ************************************* //
+app.post('/:room', (req, res, next) => {
+  // res.sendFile(__dirname + '/build/index.html')
+  console.log(req.body)
+  res.status(200).json({data: req.body})
+})
+
+
+// app.get('/:test', (req, res, next) => { //default room
+//   res.status(200).json({data: 'test'})
+// })
 const server = app.listen(port, () => console.log('Example app listening on port 8080!!'))
 
 io.listen(server)
@@ -42,13 +55,15 @@ peers.on('connection', socket => {
     const room = socket.handshake.query.room
 
     rooms[room] = rooms[room] && rooms[room].set(socket.id, socket) || (new Map()).set(socket.id, socket)
+    messages[room] = messages[room] || []
 
     //connectedPeers.set(socket.id, socket)
 
-    console.log(socket.id)
+    console.log(socket.id, room)
     socket.emit('connection-success', {
         success: socket.id,
         peerCount: rooms[room].size,
+        messages: messages[room],
     })
 
     // const broadcast = () => socket.broadcast.emit('joined-peers', {
@@ -58,11 +73,11 @@ peers.on('connection', socket => {
       const _connectedPeers = rooms[room]
   
       for (const [socketID, _socket] of _connectedPeers.entries()) {
-        if (socketID !== socket.id) {
+        //if (socketID !== socket.id) {
           _socket.emit('joined-peers', {
             peerCount: rooms[room].size //connectedPeers.size,
           })
-        }
+        //}
       }
     }
     broadcast()
@@ -82,12 +97,29 @@ peers.on('connection', socket => {
       }
     }
     //connectedPeers.set(socket.id, socket)
+    socket.on('new-message', (data) => {
+      console.log('new-message', JSON.parse(data.payload))
+  
+      messages[room] = [...messages[room], JSON.parse(data.payload)]
+    })
 
     socket.on('disconnect', () => {
       console.log('disconnected')
       // connectedPeers.delete(socket.id)
       rooms[room].delete(socket.id)
+      messages[room] = rooms[room].size === 0 ? null : messages[room]
       disconnectedPeer(socket.id)
+    })
+  
+    // ************************************* //
+    // NOT REQUIRED
+    // ************************************* //
+    socket.on('socket-to-disconnect', (socketIDToDisconnect) => {
+      console.log('disconnected')
+      // connectedPeers.delete(socket.id)
+      rooms[room].delete(socketIDToDisconnect)
+      messages[room] = rooms[room].size === 0 ? null : messages[room]
+      disconnectedPeer(socketIDToDisconnect)
     })
 
     socket.on('onlinePeers', (data) => {
@@ -103,6 +135,7 @@ peers.on('connection', socket => {
 
 
     socket.on('offer', data => {
+        console.log(data)
         const _connectedPeers = rooms[room]
         for (const [socketID, socket] of _connectedPeers.entries()) {
           // don't send to self
@@ -118,6 +151,7 @@ peers.on('connection', socket => {
     })
     
     socket.on('answer', (data) => {
+        console.log(data)
         const _connectedPeers = rooms[room]
         for (const [socketID, socket] of _connectedPeers.entries()) {
           if (socketID === data.socketID.remote) {
@@ -141,6 +175,7 @@ peers.on('connection', socket => {
     // })
     
     socket.on('candidate', (data)=>{
+        console.log(data)
         const _connectedPeers = rooms[room]
         for(const [socketID, socket] of _connectedPeers.entries()){
             if(socketID === data.socketID.remote){
